@@ -1,9 +1,14 @@
 model:
-  size: n
+  # Load yolo weights from file; If auto_download is enabled then this needs to match "yolov8[nsmlx].pt"
+  weights_path: yolov8n.pt
   device: "cpu"
+  # auto_download: True
 inference_size: [ 640, 640 ]
 classes: [ 2 ]
+max_batch_size: 1
+max_batch_interval: 0
 log_level: DEBUG
+drop_edge_detections: False
 redis:
   host: redis
   port: 6379

@@ -1,20 +1,15 @@
-from enum import Enum
+from pathlib import Path
+from typing import List, Optional
 
-from pydantic import BaseModel, conint, conlist
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing_extensions import Annotated
 from visionlib.pipeline.settings import LogLevel, YamlConfigSettingsSource
 
 
-class ModelSizeEnum(str, Enum):
-    NANO = 'n'
-    SMALL = 's'
-    MEDIUM = 'm'
-    LARGE = 'l'
-    XLARGE = 'x'
-
-
-class YoloV8Config(BaseModel):
-    size: ModelSizeEnum = ModelSizeEnum.NANO
+class YoloConfig(BaseModel):
+    weights_path: Path
+    auto_download: bool = False
     device: str = 'cpu'
     confidence_threshold: float = 0.2
     iou_threshold: float = 0.45
@@ -24,17 +19,20 @@ class YoloV8Config(BaseModel):
 
 class RedisConfig(BaseModel):
     host: str = 'localhost'
-    port: conint(ge=1, le=65536) = 6379
-    stream_ids: conlist(str)
+    port: Annotated[int, Field(ge=1, le=65536)] = 6379
+    stream_ids: Annotated[List[str], Field(min_length=1)]
     input_stream_prefix: str = 'videosource'
     output_stream_prefix: str = 'objectdetector'
 
 
 class ObjectDetectorConfig(BaseSettings):
     log_level: LogLevel = LogLevel.WARNING
-    model: YoloV8Config
+    model: YoloConfig
     inference_size: tuple[int, int] = (640, 640)
-    classes: conlist(int) = None
+    classes: Optional[List[int]] = None
+    max_batch_size: Annotated[int, Field(ge=1)] = 1
+    max_batch_interval: Annotated[float, Field(ge=0)] = 0
+    drop_edge_detections: bool = False
     redis: RedisConfig
 
     model_config = SettingsConfigDict(env_nested_delimiter='__')
