@@ -16,7 +16,7 @@ class ModelSizeEnum(str, Enum):
 class YoloV8Config(BaseModel):
     size: ModelSizeEnum = ModelSizeEnum.NANO
     device: str = 'cpu'
-    confidence_threshold: float = 0.25
+    confidence_threshold: float = 0.2
     iou_threshold: float = 0.45
     fp16_quantization: bool = False
     nms_agnostic: bool = False

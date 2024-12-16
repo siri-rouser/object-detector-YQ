@@ -61,7 +61,7 @@ class Detector:
                 agnostic=self.config.model.nms_agnostic,
             )[0]
         predictions[:, :4] = scale_boxes(inf_image.shape[2:], predictions[:, :4], input_image.shape[:2])
-        self._normalize_boxes(predictions, input_image.shape[:2])
+        self._normalize_boxes(predictions, input_image.shape[:2]) # this step normalize the bbox, where x_min, x_max are divided by the image width. y_min, y_max are divided by the image height
 
         OBJECT_COUNTER.inc(len(predictions))
 
