@@ -24,7 +24,7 @@ ENV NVIDIA_TENSORRT_DISABLE_INTERNAL_PIP=True
 COPY poetry.lock poetry.toml pyproject.toml /code/
 
 WORKDIR /code
-RUN poetry install
+RUN poetry install --no-root
     
 # Copy the rest of the project
 COPY . /code/
@@ -41,4 +41,8 @@ RUN apt update && apt install --no-install-recommends -y \
 COPY --from=build /code /code
 WORKDIR /code
 ENV PATH="/code/.venv/bin:$PATH"
+# Set the Python path to detect TensorRT
+ENV PYTHONPATH="/usr/lib/python3/dist-packages:$PYTHONPATH"
+
+
 CMD [ "python", "main.py" ]

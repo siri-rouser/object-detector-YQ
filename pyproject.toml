@@ -8,19 +8,19 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-ultralytics = "^8.3.50"
+ultralytics = "^8.3.71"
 pydantic = "^2.0.0"
-visionapi = { git = "https://github.com/starwit/vision-api.git", subdirectory = "python/visionapi", tag = "2.0.1" }
-visionlib = { git = "https://github.com/starwit/vision-lib.git", subdirectory = "python", tag = "0.9.0" }
-torch = "^2.2.1"
-torchvision = "^0.17.1"
 redis = "^5.0.0"
 pydantic-settings = "^2.0.3"
 prometheus-client = "^0.17.1"
 setuptools = "^74.0.0"
-tensorrt-cu12 = { version = "^10.7.0", source = "nvidia" }
-tensorrt-cu12-libs = { version = "^10.7.0", source = "nvidia" }
-tensorrt-cu12-bindings = { version = "^10.7.0", source = "nvidia" }
+
+
+onnxruntime-gpu = {url = "https://github.com/ultralytics/assets/releases/download/v0.0.0/onnxruntime_gpu-1.20.0-cp310-cp310-linux_aarch64.whl"}
+numpy = "1.23.5"
+
+torch = {url = "https://github.com/ultralytics/assets/releases/download/v0.0.0/torch-2.5.0a0+872d972e41.nv24.08-cp310-cp310-linux_aarch64.whl"}
+torchvision = {url = "https://github.com/ultralytics/assets/releases/download/v0.0.0/torchvision-0.20.0a0+afc54f7-cp310-cp310-linux_aarch64.whl"}
 
 
 [tool.poetry.group.dev.dependencies]
