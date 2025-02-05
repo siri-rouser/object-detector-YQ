@@ -6,6 +6,7 @@ from typing import Any, List, NamedTuple
 import numpy as np
 import torch
 from prometheus_client import Counter, Histogram, Summary
+from ultralytics import YOLO
 from ultralytics.data.augment import LetterBox
 from ultralytics.nn.autobackend import AutoBackend
 from ultralytics.utils.checks import check_imgsz
@@ -102,15 +103,6 @@ class Detector:
             output_batch.append(BatchEntry(input_entry.stream_key, self._create_output(prediction, process_entry.video_frame, inference_time_us // len(input_batch))))
         return output_batch
 
-    def _setup_model(self):
-        logger.info('Setting up object-detector model...')
-        self.device = torch.device(self.config.model.device)
-        self.model = AutoBackend(
-            self._yolo_weights(),
-            device=self.device,
-            fp16=self.config.model.fp16_quantization
-        )
-        self.input_image_size = check_imgsz(self.config.inference_size, stride=self.model.stride)
 
     @PROTO_DESERIALIZATION_DURATION.time()
     def _unpack_proto(self, sae_message_bytes):
@@ -120,11 +112,25 @@ class Detector:
         input_image = get_raw_frame_data(sae_msg.frame)
         return input_image, sae_msg.frame
     
-    def _prepare_input(self, image) -> torch.Tensor:
-        out_img = LetterBox(self.input_image_size, auto=True, stride=self.model.stride)(image=image)
-        out_img = out_img.transpose((2, 0, 1))[::-1]
-        return out_img
+    # def _prepare_input(self, image) -> torch.Tensor:
+    #     out_img = LetterBox(self.input_image_size, auto=True, stride=self.model.stride)(image=image)
+    #     out_img = out_img.transpose((2, 0, 1))[::-1]
+    #     print(out_img.shape)
+    #     return out_img
     
+    def _prepare_input(self, image) -> torch.Tensor:
+        """Prepares image for TensorRT inference ensuring it is resized correctly to self.input_image_size."""
+    
+        # Ensure that input size is exactly as expected
+        target_size = tuple(self.input_image_size)  # Convert list to tuple if necessary
+
+        # Resize the image to match the expected input size
+        out_img = LetterBox(target_size, auto=False, stride=32)(image=image)  
+
+        # Convert HWC (Height-Width-Channel) to CHW (Channel-Height-Width)
+        out_img = out_img.transpose((2, 0, 1))  
+        return out_img
+
     def _normalize_boxes(self, predictions, image_shape):
         predictions[:,0] /= image_shape[1]
         predictions[:,2] /= image_shape[1]
