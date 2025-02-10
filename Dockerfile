@@ -1,23 +1,27 @@
-FROM python:3.12-slim AS build
+# Use Python 3.10 slim base image
+FROM python:3.10-slim-bookworm AS build 
 
-# Download all variants of ultralytics yolov8
-ADD "https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8n.pt" /code/
-ADD "https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8s.pt" /code/
-ADD "https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8m.pt" /code/
-ADD "https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8l.pt" /code/
-ADD "https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8x.pt" /code/
-
+# Install required system packages
 RUN apt update && apt install --no-install-recommends -y \
     curl \
     git \
-    build-essential
+    python3-opencv \
+    build-essential \
+    python3-pip \
+    python3-venv \
+    libglib2.0-0 \
+    libgl1 \
+    libturbojpeg0 \
+    libgfortran5 \ 
+    && rm -rf /var/lib/apt/lists/*
 
+# Install Poetry
 ARG POETRY_VERSION
 ENV POETRY_HOME=/opt/poetry
 RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="${POETRY_HOME}/bin:${PATH}"
 
-# This is needed for `tensorrt-*` installation (see https://github.com/NVIDIA/TensorRT/issues/3050)
+# Ensure system TensorRT is used (disable pip TensorRT installation)
 ENV NVIDIA_TENSORRT_DISABLE_INTERNAL_PIP=True
 
 # Copy only files that are necessary to install dependencies
@@ -25,24 +29,27 @@ COPY poetry.lock poetry.toml pyproject.toml /code/
 
 WORKDIR /code
 RUN poetry install --no-root
-    
+
 # Copy the rest of the project
 COPY . /code/
 
-
-### Main artifact / deliverable image
-
-FROM python:3.12-slim
+### **Final Image for Execution**
+FROM python:3.10-slim-bookworm 
 RUN apt update && apt install --no-install-recommends -y \
     libglib2.0-0 \
     libgl1 \
-    libturbojpeg0
-    
+    libturbojpeg0 \
+    libgfortran5 \  
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /code /code
+# Set the LD_LIBRARY_PATH explicitly first
+ENV LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/lib/aarch64-linux-gnu/openblas-pthread
+# # If needed, extend LD_LIBRARY_PATH later
+ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/lib/aarch64-linux-gnu
+ENV PYTHONPATH="/usr/lib/python3/dist-packages:/usr/lib/python3.10/dist-packages"
+
+
 WORKDIR /code
 ENV PATH="/code/.venv/bin:$PATH"
-# Set the Python path to detect TensorRT
-ENV PYTHONPATH="/usr/lib/python3/dist-packages:$PYTHONPATH"
-
-
 CMD [ "python", "main.py" ]
