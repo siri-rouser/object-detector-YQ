@@ -17,13 +17,7 @@ setuptools = "^74.0.0"
 opencv-python = "^4.10"
 visionapi = { git = "https://github.com/starwit/vision-api.git", subdirectory = "python/visionapi", tag = "2.0.0" }
 visionlib = { git = "https://github.com/siri-rouser/vision-lib-YQ.git", subdirectory = "python"}
-
-onnxruntime-gpu = {url = "https://github.com/ultralytics/assets/releases/download/v0.0.0/onnxruntime_gpu-1.20.0-cp310-cp310-linux_aarch64.whl"}
 numpy = "^1.23.5"
-
-torch = {url = "https://github.com/ultralytics/assets/releases/download/v0.0.0/torch-2.5.0a0+872d972e41.nv24.08-cp310-cp310-linux_aarch64.whl"}
-torchvision = {url = "https://github.com/ultralytics/assets/releases/download/v0.0.0/torchvision-0.20.0a0+afc54f7-cp310-cp310-linux_aarch64.whl"}
-
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^8.13.2"

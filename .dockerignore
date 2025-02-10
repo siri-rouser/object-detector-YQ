@@ -9,3 +9,4 @@ demo.py
 *.sh
 *.yaml
 *.engine
+*.onnx
