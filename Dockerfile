@@ -26,28 +26,18 @@ ADD https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/arm64/cu
 RUN dpkg -i cuda-keyring_1.1-1_all.deb && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-    libopenmpi-dev libopenblas-base libomp-dev libcusparselt0 libcusparselt-dev \
+    libopenmpi-dev libopenblas-base libomp-dev libcusparselt0 libcusparselt-dev libturbojpeg\
     && rm -rf /var/lib/apt/lists/*
 
 RUN apt update && apt install -y git
 # Install Poetry for vitural env build up 
-ARG POETRY_VERSION
-ENV POETRY_HOME=/opt/poetry
-RUN curl -sSL https://install.python-poetry.org | python3 -
-ENV PATH="${POETRY_HOME}/bin:${PATH}"
-RUN poetry config virtualenvs.create false
-# Set working directory
+
 WORKDIR /code
 
 # Copy dependency files first for caching
-COPY poetry.lock poetry.toml pyproject.toml /code/
+COPY requirements.txt /code/
 
-
-# Ensure Poetry doesn't scan system packages like TensorRT
-ENV POETRY_VIRTUALENVS_SYSTEM_SITE_PACKAGES=false
-# Install dependencies
-RUN poetry cache clear pypi --all --no-interaction
-RUN poetry install --no-root --no-interaction --no-ansi -vvv
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Install torch/torchvision and onnxruntime sperately
 RUN pip3 install --no-cache-dir\
