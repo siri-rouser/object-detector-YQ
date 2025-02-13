@@ -11,4 +11,4 @@ model.export(
     dynamic=True, 
     batch=1,
     half=True,
-)  # creates 'yolov8m.engine'
+)  # creates 'yolov8l.engine'

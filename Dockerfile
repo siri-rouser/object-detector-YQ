@@ -6,58 +6,67 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
-    DEBIAN_FRONTEND=noninteractive 
+    DEBIAN_FRONTEND=noninteractive \
+    LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
 
-ADD https://github.com/ultralytics/assets/releases/download/v0.0.0/Arial.ttf \
-    https://github.com/ultralytics/assets/releases/download/v0.0.0/Arial.Unicode.ttf \
-    /root/.config/Ultralytics/
-
-
+# Install system dependencies
+RUN apt update && apt install --no-install-recommends -y \
+    curl \
+    build-essential \
+    libglib2.0-0 \
+    libgl1 \
+    libblas3 \
+    libjpeg-turbo8 \
+    libomp-dev \
+    python3-venv \
+    python3-pip \
+    tzdata
+# Install dependencies especially for cuda_keyring
 ADD https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/arm64/cuda-keyring_1.1-1_all.deb .
 RUN dpkg -i cuda-keyring_1.1-1_all.deb && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-    git python3-pip libopenmpi-dev libopenblas-base libomp-dev libcusparselt0 libcusparselt-dev python3.10-venv\
+    libopenmpi-dev libopenblas-base libomp-dev libcusparselt0 libcusparselt-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry (Python dependency management)
+RUN apt update && apt install -y git
+# Install Poetry for vitural env build up 
 ARG POETRY_VERSION
 ENV POETRY_HOME=/opt/poetry
 RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="${POETRY_HOME}/bin:${PATH}"
-
-# Copy only necessary files for dependency installation
-COPY poetry.lock poetry.toml pyproject.toml /code/
+RUN poetry config virtualenvs.create false
+# Set working directory
 WORKDIR /code
-# Install Python dependencies using Poetry
-RUN poetry install --no-root
 
-# Set up Python virtual environment
+# Copy dependency files first for caching
+COPY poetry.lock poetry.toml pyproject.toml /code/
 
-RUN python3 -m venv /code/.venv
-ENV PATH="/code/.venv/bin:$PATH"
-# Ensure system TensorRT is used (disable pip TensorRT installation)
-ENV NVIDIA_TENSORRT_DISABLE_INTERNAL_PIP=True
 
-# Pip install onnxruntime-gpu, torch, torchvision and ultralytics
-RUN python3 -m pip install --upgrade pip uv
-RUN pip install --system \
+# Ensure Poetry doesn't scan system packages like TensorRT
+ENV POETRY_VIRTUALENVS_SYSTEM_SITE_PACKAGES=false
+# Install dependencies
+RUN poetry cache clear pypi --all --no-interaction
+RUN poetry install --no-root --no-interaction --no-ansi -vvv
+
+# Install torch/torchvision and onnxruntime sperately
+RUN pip3 install --no-cache-dir\
     https://github.com/ultralytics/assets/releases/download/v0.0.0/onnxruntime_gpu-1.20.0-cp310-cp310-linux_aarch64.whl \
     https://github.com/ultralytics/assets/releases/download/v0.0.0/torch-2.5.0a0+872d972e41.nv24.08-cp310-cp310-linux_aarch64.whl \
     https://github.com/ultralytics/assets/releases/download/v0.0.0/torchvision-0.20.0a0+afc54f7-cp310-cp310-linux_aarch64.whl
 
-# Remove build files to reduce container size
-RUN rm -rf /root/.cache /root/.config/Ultralytics/persistent_cache.json
+RUN pip3 uninstall -y numpy && pip3 install numpy==1.23.5
 
 # Copy the rest of the project files
 COPY . /code/
 
-# # Set library paths for CUDA, OpenCV, and OpenBLAS
-# ENV LD_LIBRARY_PATH="/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/lib/aarch64-linux-gnu/openblas-pthread:$LD_LIBRARY_PATH"
-# ENV PYTHONPATH="/usr/lib/python3/dist-packages:/usr/lib/python3.10/dist-packages"
-
-# Set the working directory
-WORKDIR /code
+# # To allow virtial env able to use tensorrt
+# COPY /usr/lib/python3.10/dist-packages/tensorrt /usr/lib/python3.10/dist-packages
+# # To allow virtial env able to use latest version of libstdc++.so.6
+# COPY /usr/lib/aarch64-linux-gnu/libstdc++.so.6 /usr/lib/aarch64-linux-gnu/libstdc++.so.6
 
 # Run the detector
-CMD ["python", "main.py"]
+CMD ["python3", "main.py"]
+
+
+# how to build sudo docker build -t mcvt_yq/object_detector_arm64:latest --platform linux/arm64 .
