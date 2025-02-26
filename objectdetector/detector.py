@@ -2,7 +2,7 @@ import logging
 import re
 import time
 from typing import Any, List, NamedTuple
-
+import cv2
 import numpy as np
 import torch
 from prometheus_client import Counter, Histogram, Summary
@@ -16,6 +16,7 @@ from visionlib.pipeline.tools import get_raw_frame_data
 
 from .batch import BatchEntry
 from .config import ObjectDetectorConfig
+from functools import wraps
 
 logging.basicConfig(format='%(asctime)s %(name)-15s %(levelname)-8s %(processName)-10s %(message)s')
 logger = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ class Detector:
         self.model = None
         self.device = None
         self.input_image_size = None
+        self.background = cv2.cuda.createBackgroundSubtractorMOG2(history=200, varThreshold=70, detectShadows=True)
 
         self._setup_model()
 
@@ -70,38 +72,57 @@ class Detector:
     def get(self, input_batch: List[BatchEntry]) -> List[BatchEntry]:
         process_batch: List[ProcessEntry] = []
 
+        flag = 0
         for entry in input_batch:
             numpy_image, video_frame = self._unpack_proto(entry.proto_data)
-            prepared_image = self._prepare_input(numpy_image)
-            process_batch.append(ProcessEntry(prepared_image, video_frame))
-            
-        numpy_batch = np.array([entry.numpy_image for entry in process_batch])
-        numpy_batch_ct = np.ascontiguousarray(numpy_batch)
-        batch_tensor = torch.from_numpy(numpy_batch_ct).to(self.device).float() / 255.0
+            if self.config.motion_detect:
+                if self._detect_motion(numpy_image):
+                    prepared_image = self._prepare_input(numpy_image)
+                    process_batch.append(ProcessEntry(prepared_image, video_frame))
+                else:
+                    logger.info('Skipping frame due to no motion detected')
+                    prepared_image = np.zeros_like(numpy_image)
+                    process_batch.append(ProcessEntry(prepared_image, video_frame))
+                    flag+=1
+                    continue
+            else:
+                prepared_image = self._prepare_input(numpy_image)
+                process_batch.append(ProcessEntry(prepared_image, video_frame))
+        
+        if flag == len(input_batch):
+            print('No motion detected in the batch')
+            output_batch = []
+            for idx,input_entry in enumerate(input_batch):
+                output_batch.append(BatchEntry(input_entry.stream_key, self._create_output([], process_batch[idx].video_frame,0)))
+            return output_batch
+        else:
+            numpy_batch = np.array([entry.numpy_image for entry in process_batch])
+            numpy_batch_ct = np.ascontiguousarray(numpy_batch)
+            batch_tensor = torch.from_numpy(numpy_batch_ct).to(self.device).float() / 255.0
 
-        inference_start = time.time_ns()
+            inference_start = time.time_ns()
 
-        with MODEL_DURATION.time():
-            yolo_prediction = self.model(batch_tensor)
+            with MODEL_DURATION.time():
+                yolo_prediction = self.model(batch_tensor)
 
-        with NMS_DURATION.time():
-            predictions = non_max_suppression(
-                yolo_prediction, 
-                conf_thres=self.config.model.confidence_threshold, 
-                iou_thres=self.config.model.iou_threshold,
-                classes=self.config.classes,
-                agnostic=self.config.model.nms_agnostic,
-            )
+            with NMS_DURATION.time():
+                predictions = non_max_suppression(
+                    yolo_prediction, 
+                    conf_thres=self.config.model.confidence_threshold, 
+                    iou_thres=self.config.model.iou_threshold,
+                    classes=self.config.classes,
+                    agnostic=self.config.model.nms_agnostic,
+                )
 
-        inference_time_us = (time.time_ns() - inference_start) // 1000
+            inference_time_us = (time.time_ns() - inference_start) // 1000
 
-        output_batch = []
-        for input_entry, process_entry, prediction in zip(input_batch, process_batch, predictions):
-            prediction[:, :4] = scale_boxes(process_entry.numpy_image.shape[1:], prediction[:, :4], (process_entry.video_frame.shape.height, process_entry.video_frame.shape.width))
-            self._normalize_boxes(prediction, (process_entry.video_frame.shape.height, process_entry.video_frame.shape.width))
-            OBJECT_COUNTER.inc(len(prediction))
-            output_batch.append(BatchEntry(input_entry.stream_key, self._create_output(prediction, process_entry.video_frame, inference_time_us // len(input_batch))))
-        return output_batch
+            output_batch = []
+            for input_entry, process_entry, prediction in zip(input_batch, process_batch, predictions):
+                prediction[:, :4] = scale_boxes(process_entry.numpy_image.shape[1:], prediction[:, :4], (process_entry.video_frame.shape.height, process_entry.video_frame.shape.width))
+                self._normalize_boxes(prediction, (process_entry.video_frame.shape.height, process_entry.video_frame.shape.width))
+                OBJECT_COUNTER.inc(len(prediction))
+                output_batch.append(BatchEntry(input_entry.stream_key, self._create_output(prediction, process_entry.video_frame, inference_time_us // len(input_batch))))
+            return output_batch
 
 
     @PROTO_DESERIALIZATION_DURATION.time()
@@ -118,7 +139,7 @@ class Detector:
     #     print(out_img.shape)
     #     return out_img
     
-    def _prepare_input(self, image) -> torch.Tensor:
+    def _prepare_input(self, image):
         """Prepares image for TensorRT inference ensuring it is resized correctly to self.input_image_size."""
     
         # Ensure that input size is exactly as expected
@@ -173,3 +194,30 @@ class Detector:
             max_x > 0.99,
             max_y > 0.99
         ))
+    
+    def time_function(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start_time = time.time()
+            result = func(*args, **kwargs)
+            end_time = time.time()
+            ms_time = 1000*(end_time - start_time)
+            logger.info(f"{func.__name__} took {ms_time:.6f} ms")
+            return result
+        return wrapper
+
+    @time_function
+    def _detect_motion(self, image):
+        gpu_frame = cv2.cuda_GpuMat()
+        gpu_frame.upload(frame)
+        fg_mask = self.background.apply(image)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
+        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
+
+        # Count non-zero pixels in fg_mask
+        motion_pixels = cv2.countNonZero(fg_mask)
+        if motion_pixels > self.config.motion_threshold:
+            return True
+        else:
+            return False

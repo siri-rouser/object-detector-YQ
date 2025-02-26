@@ -33,6 +33,8 @@ class ObjectDetectorConfig(BaseSettings):
     max_batch_size: Annotated[int, Field(ge=1)] = 1
     max_batch_interval: Annotated[float, Field(ge=0)] = 0
     drop_edge_detections: bool = False
+    motion_detect: bool=True
+    motion_threshold: int
     redis: RedisConfig
 
     model_config = SettingsConfigDict(env_nested_delimiter='__')
