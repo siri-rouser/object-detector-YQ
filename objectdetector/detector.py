@@ -42,7 +42,19 @@ class Detector:
         self.device = None
         self.input_image_size = None
         self.background = cv2.cuda.createBackgroundSubtractorMOG2(history=200, varThreshold=70, detectShadows=True)
+        kernel = np.ones((3, 3), dtype=np.uint8)
 
+        # Create GPU-based morphological filters
+        self.erode_filter = cv2.cuda.createMorphologyFilter(
+            op=cv2.MORPH_ERODE,
+            srcType=cv2.CV_8UC1,  # Type of your GPU foreground mask
+            kernel=kernel
+        )
+        self.dilate_filter = cv2.cuda.createMorphologyFilter(
+            op=cv2.MORPH_DILATE,
+            srcType=cv2.CV_8UC1,
+            kernel=kernel
+        )
         self._setup_model()
 
     def _setup_model(self):
@@ -208,18 +220,18 @@ class Detector:
 
     @time_function
     def _detect_motion(self, image):
+        # Resize the image to a smaller size for faster processing
+        # resized_image = cv2.resize(image, (640, 360))
+
         gpu_frame = cv2.cuda.GpuMat()
         gpu_frame.upload(image)
+        gpu_frame = cv2.cuda.resize(gpu_frame, (1280, 640))
 
-        fg_mask_gpu = self.background.apply(gpu_frame,learningRate=-1, stream=None)
-
-        fg_mask = fg_mask_gpu.download()
-
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
-        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
-        
+        fg_mask_gpu = self.background.apply(gpu_frame, learningRate=-1, stream=None)
+        self.erode_filter.apply(fg_mask_gpu, fg_mask_gpu)
+        self.dilate_filter.apply(fg_mask_gpu, fg_mask_gpu)
         # Count non-zero pixels in fg_mask
+        fg_mask = fg_mask_gpu.download()
         motion_pixels = cv2.countNonZero(fg_mask)
 
         return (motion_pixels > self.config.motion_threshold)
