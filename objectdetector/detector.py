@@ -220,8 +220,6 @@ class Detector:
 
     @time_function
     def _detect_motion(self, image):
-        # Resize the image to a smaller size for faster processing
-        # resized_image = cv2.resize(image, (640, 360))
 
         gpu_frame = cv2.cuda.GpuMat()
         gpu_frame.upload(image)
