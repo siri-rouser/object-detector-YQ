@@ -50,7 +50,7 @@ def run_stage():
     publish = RedisPublisher(CONFIG.redis.host, CONFIG.redis.port)
     
     with consume, publish:
-        for batch in batched(consume(), CONFIG.max_batch_size, CONFIG.max_batch_interval):
+        for batch in batched(consume(), CONFIG.max_batch_size, CONFIG.max_batch_interval): # batch size is the number of frames to process at once
             if stop_event.is_set():
                 break
 

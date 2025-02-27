@@ -208,16 +208,18 @@ class Detector:
 
     @time_function
     def _detect_motion(self, image):
-        gpu_frame = cv2.cuda_GpuMat()
-        gpu_frame.upload(frame)
-        fg_mask = self.background.apply(image)
+        gpu_frame = cv2.cuda.GpuMat()
+        gpu_frame.upload(image)
+
+        fg_mask_gpu = self.background.apply(gpu_frame,learningRate=-1, stream=None)
+
+        fg_mask = fg_mask_gpu.download()
+
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
         fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
-
+        
         # Count non-zero pixels in fg_mask
         motion_pixels = cv2.countNonZero(fg_mask)
-        if motion_pixels > self.config.motion_threshold:
-            return True
-        else:
-            return False
+
+        return (motion_pixels > self.config.motion_threshold)
