@@ -84,6 +84,8 @@ class Detector:
     def get(self, input_batch: List[BatchEntry]) -> List[BatchEntry]:
         process_batch: List[ProcessEntry] = []
 
+        inference_start = time.time_ns()
+        
         flag = 0
         for entry in input_batch:
             numpy_image, video_frame = self._unpack_proto(entry.proto_data)
@@ -112,7 +114,7 @@ class Detector:
             numpy_batch_ct = np.ascontiguousarray(numpy_batch)
             batch_tensor = torch.from_numpy(numpy_batch_ct).to(self.device).float() / 255.0
 
-            inference_start = time.time_ns()
+            
 
             with MODEL_DURATION.time():
                 yolo_prediction = self.model(batch_tensor)
@@ -207,18 +209,6 @@ class Detector:
             max_y > 0.99
         ))
     
-    def time_function(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            start_time = time.time()
-            result = func(*args, **kwargs)
-            end_time = time.time()
-            ms_time = 1000*(end_time - start_time)
-            logger.info(f"{func.__name__} took {ms_time:.6f} ms")
-            return result
-        return wrapper
-
-    @time_function
     def _detect_motion(self, image):
 
         gpu_frame = cv2.cuda.GpuMat()

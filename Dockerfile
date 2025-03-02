@@ -21,6 +21,7 @@ RUN apt update && apt install --no-install-recommends -y \
     python3-venv \
     python3-pip \
     tzdata
+
 # Install dependencies especially for cuda_keyring
 ADD https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/arm64/cuda-keyring_1.1-1_all.deb .
 RUN dpkg -i cuda-keyring_1.1-1_all.deb && \
@@ -30,7 +31,6 @@ RUN dpkg -i cuda-keyring_1.1-1_all.deb && \
     && rm -rf /var/lib/apt/lists/*
 
 RUN apt update && apt install -y git
-# Install Poetry for vitural env build up 
 
 WORKDIR /code
 
@@ -45,18 +45,58 @@ RUN pip3 install --no-cache-dir\
     https://github.com/ultralytics/assets/releases/download/v0.0.0/torch-2.5.0a0+872d972e41.nv24.08-cp310-cp310-linux_aarch64.whl \
     https://github.com/ultralytics/assets/releases/download/v0.0.0/torchvision-0.20.0a0+afc54f7-cp310-cp310-linux_aarch64.whl
 
-RUN pip3 uninstall -y numpy && pip3 install numpy==1.23.5
-
+RUN apt install cmake -y
 # Copy the rest of the project files
 COPY . /code/
 
-# # To allow virtial env able to use tensorrt
-# COPY /usr/lib/python3.10/dist-packages/tensorrt /usr/lib/python3.10/dist-packages
-# # To allow virtial env able to use latest version of libstdc++.so.6
-# COPY /usr/lib/aarch64-linux-gnu/libstdc++.so.6 /usr/lib/aarch64-linux-gnu/libstdc++.so.6
+RUN git clone --branch 4.10.0 https://github.com/opencv/opencv.git /opt/opencv
+RUN git clone --branch 4.10.0 https://github.com/opencv/opencv_contrib.git /opt/opencv_contrib
+WORKDIR /opt/opencv
 
+# Uninstall the pre-installed opencv-python package by ultralytics
+RUN pip3 uninstall -y opencv-python
+
+RUN mkdir build && cd build && \
+    cmake -D CMAKE_BUILD_TYPE=Release \
+          -D CMAKE_INSTALL_PREFIX=/usr \
+          -D OPENCV_EXTRA_MODULES_PATH=/opt/opencv_contrib/modules \
+          -D WITH_CUDA=ON \
+          -D WITH_CUDNN=ON \
+          -D OPENCV_DNN_CUDA=ON \
+          -D CUDA_ARCH_BIN=87 \
+          -D PYTHON3_PACKAGES_PATH=/usr/lib/python3/dist-packages \
+          .. && \
+    make -j$(nproc) && \
+    make install && \
+    ldconfig
+
+RUN pip3 uninstall -y numpy && pip3 install numpy==1.23.5
+
+# Do this after all previous steps to avoid cache invalidation
+RUN apt-get update && apt-get remove --purge -y 'libnvinfer*' 'python3-libnvinfer*' && \
+    rm -rf /var/lib/apt/lists/*
+
+# 1) Ensure /tmp is writable
+RUN mkdir -p /tmp && chmod 1777 /tmp
+
+# 2) Install apt-transport-https, gnupg, etc.
+RUN apt-get update && apt-get install -y \
+    apt-transport-https gnupg2 ca-certificates
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libnvinfer-dev=10.7.0.23-1+cuda12.6 \
+    libnvinfer-plugin-dev=10.7.0.23-1+cuda12.6 \
+    libnvinfer-bin=10.7.0.23-1+cuda12.6 \
+    python3-libnvinfer=10.7.0.23-1+cuda12.6 \
+    python3-libnvinfer-dev=10.7.0.23-1+cuda12.6 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /code
 # Run the detector
 CMD ["python3", "main.py"]
 
-
 # how to build sudo docker build -t mcvt_yq/object_detector_arm64:latest --platform linux/arm64 .
+# sudo docker run --runtime=nvidia -it \
+#   -v /home/yuqiang/yl4300/Multi-Camera-Vision-Pipeline-YQ/docker-compose/object-detector/object-detector.settings.yaml:/code/settings.yaml \
+#   -v /home/yuqiang/yl4300/Multi-Camera-Vision-Pipeline-YQ/subpackages/object-detector-YQ/object-detector-YQ/yolo11l.engine:/code/yolo11l.engine \
+#   mcvt_yq/object_detector_arm64:v2.0 sh
