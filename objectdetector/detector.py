@@ -10,7 +10,7 @@ from ultralytics.data.augment import LetterBox
 from ultralytics.nn.autobackend import AutoBackend
 from ultralytics.utils.checks import check_imgsz
 from ultralytics.utils.ops import non_max_suppression, scale_boxes
-from visionapi.messages_pb2 import Metrics, SaeMessage, VideoFrame
+from visionapi_yq.messages_pb2 import Metrics, SaeMessage, VideoFrame
 from visionlib.pipeline.tools import get_raw_frame_data
 
 from .batch import BatchEntry
@@ -153,6 +153,7 @@ class Detector:
 
             detection.confidence = float(pred[4])
             detection.class_id = int(pred[5])
+            detection.timestamp_utc_ms = frame_proto.timestamp_utc_ms
 
         sae_msg.frame.CopyFrom(frame_proto)
 
